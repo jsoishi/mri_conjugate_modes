@@ -41,7 +41,7 @@ def max_growth_rate(Reynolds, Rossby, ky, kz, Nx, NEV=10, target=0):
 
     # Fields
     bases = (zbasis, ybasis, xbasis)
-    omega = dist.Field(name='omega')
+    sigma = dist.Field(name='sigma')
     p = dist.Field(name='p', bases=bases)
     u = dist.VectorField(coords, name='u', bases=bases)
     tau_p = dist.Field(name='tau_p')
@@ -58,14 +58,14 @@ def max_growth_rate(Reynolds, Rossby, ky, kz, Nx, NEV=10, target=0):
     lift_basis = xbasis.derivative_basis(1)
     lift = lambda A: d3.Lift(A, lift_basis, -1)
     grad_u = d3.grad(u) + ex*lift(tau_u1) # First-order reduction
-    dt = lambda A: -1j*omega*A
+    dt = lambda A: sigma*A
 
     inv_Ro['g'][2] = 1/Rossby
     u0['g'][1] = -x
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
     # First-order form: "lap(f)" becomes "div(grad_f)"
-    problem = d3.EVP([p, u, tau_p, tau_u1, tau_u2], namespace=locals(), eigenvalue=omega)
+    problem = d3.EVP([p, u, tau_p, tau_u1, tau_u2], namespace=locals(), eigenvalue=sigma)
     problem.add_equation("trace(grad_u) + tau_p = 0")
     problem.add_equation("dt(u) + dot(u0,grad(u)) + dot(u,grad(u0)) - div(grad_u)/Reynolds + grad(p) - cross(inv_Ro, u) + lift(tau_u2) = 0")
     problem.add_equation("u(x=-Lx) = 0")
@@ -77,7 +77,7 @@ def max_growth_rate(Reynolds, Rossby, ky, kz, Nx, NEV=10, target=0):
     growth = []
     for p in solver.subproblems:
         solver.solve_sparse(p, NEV, target=target)
-        growth.append(np.max(solver.eigenvalues.imag))
+        growth.append(np.max(solver.eigenvalues.real))
     return np.max(growth)
 
 
@@ -115,7 +115,7 @@ if __name__ == "__main__":
         plt.figure(figsize=(6,4))
         plt.plot(kz_global, growth_global, '.')
         plt.xlabel(r'$k_z$')
-        plt.ylabel(r'$\mathrm{Im}(\omega)$')
+        plt.ylabel(r'$\mathrm{Re}(\sigma)$')
         plt.title(r'rpC growth rates ($\mathrm{Re} = %.2f, \; \mathrm{Ro} = %.2f$)' %(Reynolds, Rossby))
         plt.tight_layout()
         plt.savefig('growth_rates.pdf')
