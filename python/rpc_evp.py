@@ -60,7 +60,7 @@ def max_growth_rate(Reynolds, Rossby, ky, kz, Nx, NEV=10, target=0):
     grad_u = d3.grad(u) + ex*lift(tau_u1) # First-order reduction
     dt = lambda A: sigma*A
 
-    inv_Ro['g'][2] = 1/Rossby
+    inv_Ro['g'][0] = 1/Rossby
     u0['g'][1] = -x
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
@@ -89,14 +89,15 @@ if __name__ == "__main__":
 
     # Parameters
     Nx = 64
-    Reynolds = 1710
+    Reynolds = 104
     Rossby = 100
-    kz_global = np.linspace(1.0, 3.25, 50)
-    ky = 3.0
+    kz_global = np.linspace(1.0, 3.25, 128)
+    ky = 1e-5
     NEV = 10
 
     # Compute growth rate over local wavenumbers
     kz_local = kz_global[comm.rank::comm.size]
+
     t1 = time.time()
     growth_local = np.array([max_growth_rate(Reynolds, Rossby, ky, kz, Nx, NEV=NEV) for kz in kz_local])
     t2 = time.time()
@@ -114,8 +115,9 @@ if __name__ == "__main__":
     if comm.rank == 0:
         plt.figure(figsize=(6,4))
         plt.plot(kz_global, growth_global, '.')
+
         plt.xlabel(r'$k_z$')
         plt.ylabel(r'$\mathrm{Re}(\sigma)$')
         plt.title(r'rpC growth rates ($\mathrm{Re} = %.2f, \; \mathrm{Ro} = %.2f$)' %(Reynolds, Rossby))
         plt.tight_layout()
-        plt.savefig('growth_rates.pdf')
+        plt.savefig('growth_rates'+str(ky)+"_"+str(Reynolds)+'.pdf')
