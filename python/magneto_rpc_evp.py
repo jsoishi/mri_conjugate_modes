@@ -43,14 +43,16 @@ def max_growth_rate(Reynolds, Rossby, Rm, Ma, b0_scalar, ky, kz, Nx, NEV=10, tar
     bases = (zbasis, ybasis, xbasis)
     sigma = dist.Field(name='sigma')
     p = dist.Field(name='p', bases=bases)
+    phi = dist.Field(name='phi', bases=(xbasis, ybasis, zbasis))
     # def the A field 
     a = dist.VectorField(coords, name='a', bases=bases)
-    b = dist.VectorField(coords, name='b', bases=bases)
-    j = dist.VectorField(coords, name='j', bases=bases)
+    # b = dist.VectorField(coords, name='b', bases=bases)
+    # j = dist.VectorField(coords, name='j', bases=bases)
     u = dist.VectorField(coords, name='u', bases=bases)
     tau_p = dist.Field(name='tau_p')
-    tau_b = dist.VectorField(coords, name='tau_b', bases=(zbasis, ybasis))
-    tau_a = dist.VectorField(coords, name='tau_a', bases=(zbasis, ybasis))
+    tau_phi = dist.Field(name='tau_phi')
+    tau_a1 = dist.VectorField(coords, name='tau_a1', bases=(zbasis, ybasis))
+    tau_a2 = dist.VectorField(coords, name='tau_a2', bases=(zbasis, ybasis))
     tau_u1 = dist.VectorField(coords, name='tau_u1', bases=(zbasis, ybasis))
     tau_u2 = dist.VectorField(coords, name='tau_u2', bases=(zbasis, ybasis))
     
@@ -60,19 +62,19 @@ def max_growth_rate(Reynolds, Rossby, Rm, Ma, b0_scalar, ky, kz, Nx, NEV=10, tar
     u0 = dist.VectorField(coords, name='u', bases=bases)
     b0 = dist.VectorField(coords, name='b', bases=bases)
 
-    # inverse magneto Reynolds number
-    inv_Rm = dist.VectorField(coords, name = '1/Rm')
-    inv_Ma_2 = dist.VectorField(coords, name = '(1/Ma)**2')
+
     # Substitutions
     ez, ey, ex = coords.unit_vector_fields(dist)
     lift_basis = xbasis.derivative_basis(1)
     lift = lambda A: d3.Lift(A, lift_basis, -1)
     grad_u = d3.grad(u) + ex*lift(tau_u1) # First-order reduction
-    grad_a = d3.grad(a) + ex*lift(tau_a) # First-order reduction
+    grad_a = d3.grad(a) + ex*lift(tau_a1) # First-order reduction
     dt = lambda A: sigma*A
 
-    j = d3.curl(b)
-    b = d3.curl(a)
+    # b = d3.curl(a)
+    # j = d3.curl(b)
+    j = -d3.lap(a) # Coulomb Gauge + double curl identity
+    b = d3.curl(a) + ex
     inv_Ro['g'][0] = 1/Rossby
     u0['g'][1] = -x
     b0['g'][0] = b0_scalar
@@ -82,16 +84,18 @@ def max_growth_rate(Reynolds, Rossby, Rm, Ma, b0_scalar, ky, kz, Nx, NEV=10, tar
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
     # First-order form: "lap(f)" becomes "div(grad_f)"
-    problem = d3.EVP([p, u, b, a, j, tau_p, tau_u1, tau_u2, tau_b], namespace=locals(), eigenvalue=sigma)
+    problem = d3.EVP([p, u, b, a, j, phi, tau_p, tau_u1, tau_u2, tau_a1, tau_a2, tau_phi], namespace=locals(), eigenvalue=sigma)
     problem.add_equation("trace(grad_u) + tau_p = 0")
-    problem.add_equation("dt(a) + lift(tau_a) - cross(u,b0) - cross(u0,b)  - div(grad_a)/Rm= 0")
+   
+    problem.add_equation("dt(a) + lift(tau_a2) -  div(grad_a)/Rm +grad(phi) - (cross(u0,b)+cross(u,b0))= 0")
     problem.add_equation("dt(u) + dot(u0,grad(u)) + dot(u,grad(u0)) + (cross(div(grad_a), b0) + cross(div(grad_a),b))/(Ma**2) - div(grad_u)/Reynolds + grad(p) - cross(inv_Ro, u) + lift(tau_u2) = 0")
-    problem.add_equation("trace(grad_a) = 0")
+    problem.add_equation("trace(grad_a)+tau_phi = 0")
    
 
     problem.add_equation("u(x=-Lx) = 0")
     problem.add_equation("u(x=Lx) = 0")
     problem.add_equation("integ(p) = 0") # Pressure gauge
+    problem.add_equation("integ(phi) = 0")
 
     # Solver
     solver = problem.build_solver(entry_cutoff=0)
