@@ -18,7 +18,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def max_growth_rate(Reynolds, Rossby, Rm, Ma, ky, kz, Nx, NEV=10, target=0):
+def max_growth_rate(Reynolds, Rossby, Rm, Ma, b0_scalar, ky, kz, Nx, NEV=10, target=0):
     """Compute maximum linear growth rate."""
 
     # Parameters
@@ -49,8 +49,8 @@ def max_growth_rate(Reynolds, Rossby, Rm, Ma, ky, kz, Nx, NEV=10, target=0):
     j = dist.VectorField(coords, name='j', bases=bases)
     u = dist.VectorField(coords, name='u', bases=bases)
     tau_p = dist.Field(name='tau_p')
-    tau_b = dist.Field(name='tau_b')
-    tau_a = dist.Field(name='tau_a')
+    tau_b = dist.VectorField(coords, name='tau_b', bases=(zbasis, ybasis))
+    tau_a = dist.VectorField(coords, name='tau_a', bases=(zbasis, ybasis))
     tau_u1 = dist.VectorField(coords, name='tau_u1', bases=(zbasis, ybasis))
     tau_u2 = dist.VectorField(coords, name='tau_u2', bases=(zbasis, ybasis))
     
@@ -58,33 +58,36 @@ def max_growth_rate(Reynolds, Rossby, Rm, Ma, ky, kz, Nx, NEV=10, target=0):
     inv_Ro = dist.VectorField(coords, name = '1/Ro')
     # background velocity field
     u0 = dist.VectorField(coords, name='u', bases=bases)
+    b0 = dist.VectorField(coords, name='b', bases=bases)
 
     # inverse magneto Reynolds number
     inv_Rm = dist.VectorField(coords, name = '1/Rm')
-    z = dist.VectorField(coords, name = 'z')
     inv_Ma_2 = dist.VectorField(coords, name = '(1/Ma)**2')
     # Substitutions
     ez, ey, ex = coords.unit_vector_fields(dist)
     lift_basis = xbasis.derivative_basis(1)
     lift = lambda A: d3.Lift(A, lift_basis, -1)
     grad_u = d3.grad(u) + ex*lift(tau_u1) # First-order reduction
+    grad_a = d3.grad(a) + ex*lift(tau_a) # First-order reduction
     dt = lambda A: sigma*A
 
     j = d3.curl(b)
     b = d3.curl(a)
     inv_Ro['g'][0] = 1/Rossby
     u0['g'][1] = -x
-    inv_Rm['g'][0] = 1/Rm
-    inv_Ma_2['g'][0] = 1/(Ma**2)
-    z['g'][0] = 1
+    b0['g'][0] = b0_scalar
+    # inv_Rm['g'][0] = 1/Rm
+    # inv_Ma_2['g'][0] = 1/(Ma**2)
+    # z['g'][0] = 1
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
     # First-order form: "lap(f)" becomes "div(grad_f)"
-    problem = d3.EVP([p, u, b, a, j, tau_p, tau_u1, tau_u2, tau_b,], namespace=locals(), eigenvalue=sigma)
+    problem = d3.EVP([p, u, b, a, j, tau_p, tau_u1, tau_u2, tau_b], namespace=locals(), eigenvalue=sigma)
     problem.add_equation("trace(grad_u) + tau_p = 0")
-    problem.add_equation("dt(u) + dot(u0,grad(u)) + dot(u,grad(u0)) - cross(j, inv_Ma_2) - cross(j,b)/(Ma**2) - div(grad_u)/Reynolds + grad(p) - cross(inv_Ro, u) + lift(tau_u2) + lift(tau_a) = 0")
-    problem.add_equation("trace(grad_a) + tau_b = 0")
-    problem.add_equation("dt(a) + lift(tau_a)= cross(u,z) + cross(z,b) +cross(u,b) +inv_Rm*div(grad_a)")
+    problem.add_equation("dt(a) + lift(tau_a) - cross(u,b0) - cross(u0,b)  - div(grad_a)/Rm= 0")
+    problem.add_equation("dt(u) + dot(u0,grad(u)) + dot(u,grad(u0)) + (cross(div(grad_a), b0) + cross(div(grad_a),b))/(Ma**2) - div(grad_u)/Reynolds + grad(p) - cross(inv_Ro, u) + lift(tau_u2) = 0")
+    problem.add_equation("trace(grad_a) = 0")
+   
 
     problem.add_equation("u(x=-Lx) = 0")
     problem.add_equation("u(x=Lx) = 0")
@@ -111,6 +114,7 @@ if __name__ == "__main__":
     Ma = 10
     Reynolds = 110
     Rossby = 100
+    b0 = 10e-6
     kz_global = np.linspace(1.0, 3.25, 128)
     ky = 1e-5
     NEV = 10
@@ -119,7 +123,7 @@ if __name__ == "__main__":
     kz_local = kz_global[comm.rank::comm.size]
 
     t1 = time.time()
-    growth_local = np.array([max_growth_rate(Reynolds, Rossby,Rm,Ma, ky, kz, Nx, NEV=NEV) for kz in kz_local])
+    growth_local = np.array([max_growth_rate(Reynolds, Rossby,Rm,Ma,b0, ky, kz, Nx, NEV=NEV) for kz in kz_local])
     t2 = time.time()
     logger.info('Elapsed solve time: %f' %(t2-t1))
 
