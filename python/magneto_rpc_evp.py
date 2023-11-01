@@ -74,7 +74,7 @@ def max_growth_rate(Reynolds, Rossby, Rm, Ma, b0_scalar, ky, kz, Nx, NEV=10, tar
     # b = d3.curl(a)
     # j = d3.curl(b)
     j = -d3.lap(a) # Coulomb Gauge + double curl identity
-    b = d3.curl(a) + ex
+    b = d3.curl(a)
     inv_Ro['g'][0] = 1/Rossby
     u0['g'][1] = -x
     b0['g'][0] = b0_scalar
@@ -84,19 +84,25 @@ def max_growth_rate(Reynolds, Rossby, Rm, Ma, b0_scalar, ky, kz, Nx, NEV=10, tar
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
     # First-order form: "lap(f)" becomes "div(grad_f)"
-    problem = d3.EVP([p, u, b, a, j, phi, tau_p, tau_u1, tau_u2, tau_a1, tau_a2, tau_phi], namespace=locals(), eigenvalue=sigma)
+    problem = d3.EVP([p, u, a, phi, tau_p, tau_u1, tau_u2, tau_a1, tau_a2, tau_phi], namespace=locals(), eigenvalue=sigma)
     problem.add_equation("trace(grad_u) + tau_p = 0")
    
     problem.add_equation("dt(a) + lift(tau_a2) -  div(grad_a)/Rm +grad(phi) - (cross(u0,b)+cross(u,b0))= 0")
-    problem.add_equation("dt(u) + dot(u0,grad(u)) + dot(u,grad(u0)) + (cross(div(grad_a), b0) + cross(div(grad_a),b))/(Ma**2) - div(grad_u)/Reynolds + grad(p) - cross(inv_Ro, u) + lift(tau_u2) = 0")
+    problem.add_equation("dt(u) + dot(u0,grad(u)) + dot(u,grad(u0)) + (cross(j, b0))/(Ma**2)  - div(grad_u)/Reynolds +  \
+        grad(p) - cross(inv_Ro, u) + lift(tau_u2) = 0")
     problem.add_equation("trace(grad_a)+tau_phi = 0")
-   
-
-    problem.add_equation("u(x=-Lx) = 0")
-    problem.add_equation("u(x=Lx) = 0")
     problem.add_equation("integ(p) = 0") # Pressure gauge
     problem.add_equation("integ(phi) = 0")
-
+    problem.add_equation("u(x=-Lx) = 0")
+    problem.add_equation("u(x=Lx) = 0")
+    # problem.add_equation("a(x=-Lx) = 0")
+    # problem.add_equation("a(x=Lx) = 0")
+    problem.add_equation("ey@a(x=-Lx) = 0")
+    problem.add_equation("ey@a(x=Lx) = 0")
+    problem.add_equation("ez@a(x=-Lx) = 0")
+    problem.add_equation("ez@a(x=Lx) = 0")
+    problem.add_equation("phi(x=-Lx) = 0")
+    problem.add_equation("phi(x=Lx) = 0")
     # Solver
     solver = problem.build_solver(entry_cutoff=0)
     growth = []
@@ -116,9 +122,9 @@ if __name__ == "__main__":
     Nx = 64
     Rm = 100
     Ma = 10
-    Reynolds = 110
+    Reynolds = 103.96
     Rossby = 100
-    b0 = 10e-6
+    b0 = 1
     kz_global = np.linspace(1.0, 3.25, 128)
     ky = 1e-5
     NEV = 10
@@ -127,7 +133,7 @@ if __name__ == "__main__":
     kz_local = kz_global[comm.rank::comm.size]
 
     t1 = time.time()
-    growth_local = np.array([max_growth_rate(Reynolds, Rossby,Rm,Ma,b0, ky, kz, Nx, NEV=NEV) for kz in kz_local])
+    growth_local = np.array([max_growth_rate(Reynolds, Rossby,Rm, Ma, b0, ky, kz, Nx, NEV=NEV) for kz in kz_local])
     t2 = time.time()
     logger.info('Elapsed solve time: %f' %(t2-t1))
 
@@ -146,6 +152,7 @@ if __name__ == "__main__":
 
         plt.xlabel(r'$k_z$')
         plt.ylabel(r'$\mathrm{Re}(\sigma)$')
-        plt.title(r'rpC growth rates ($\mathrm{Re} = %.2f, \; \mathrm{Ro} = %.2f$)' %(Reynolds, Rossby))
+        plt.title(r'rpC growth rates ($\mathrm{Re} = %.2f, \; \mathrm{Ro} = %.2f$\; Rm = %.2f$\; Ma = %.2f$)' %(Reynolds, Rossby, Rm,Ma))
         plt.tight_layout()
-        plt.savefig('growth_rates'+str(ky)+"_"+str(Reynolds)+'.pdf')
+        plt.savefig('growth_rates_'+str(ky)+"_"+str(Reynolds)+" "+'.pdf')
+        plt.savefig(f"growth_rate_Ma={Ma}_Re={Reynolds}_Rm={Rm}_Ro={Rossby}_.pdf")
