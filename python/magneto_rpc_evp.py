@@ -44,10 +44,7 @@ def max_growth_rate(Reynolds, Rossby, Rm, Ma, b0_scalar, ky, kz, Nx, NEV=10, tar
     sigma = dist.Field(name='sigma')
     p = dist.Field(name='p', bases=bases)
     phi = dist.Field(name='phi', bases=(xbasis, ybasis, zbasis))
-    # def the A field 
     a = dist.VectorField(coords, name='a', bases=bases)
-    # b = dist.VectorField(coords, name='b', bases=bases)
-    # j = dist.VectorField(coords, name='j', bases=bases)
     u = dist.VectorField(coords, name='u', bases=bases)
     tau_p = dist.Field(name='tau_p')
     tau_phi = dist.Field(name='tau_phi')
@@ -58,9 +55,10 @@ def max_growth_rate(Reynolds, Rossby, Rm, Ma, b0_scalar, ky, kz, Nx, NEV=10, tar
     
     # inverse Rossby number
     inv_Ro = dist.VectorField(coords, name = '1/Ro')
+    
     # background velocity field
-    u0 = dist.VectorField(coords, name='u', bases=bases)
-    b0 = dist.VectorField(coords, name='b', bases=bases)
+    u0 = dist.VectorField(coords, name='u', bases=(xbasis,))
+    b0 = dist.VectorField(coords, name='b')
 
 
     # Substitutions
@@ -71,8 +69,6 @@ def max_growth_rate(Reynolds, Rossby, Rm, Ma, b0_scalar, ky, kz, Nx, NEV=10, tar
     grad_a = d3.grad(a) + ex*lift(tau_a1) # First-order reduction
     dt = lambda A: sigma*A
 
-    # b = d3.curl(a)
-    # j = d3.curl(b)
     j = -d3.lap(a) # Coulomb Gauge + double curl identity
     b = d3.curl(a)
     inv_Ro['g'][0] = 1/Rossby
@@ -106,7 +102,7 @@ def max_growth_rate(Reynolds, Rossby, Rm, Ma, b0_scalar, ky, kz, Nx, NEV=10, tar
     # Solver
     solver = problem.build_solver(entry_cutoff=0)
     growth = []
-    for p in solver.subproblems:
+    for p in solver.subproblems[1:]:
         solver.solve_sparse(p, NEV, target=target)
         growth.append(np.max(solver.eigenvalues.real))
     return np.max(growth)
