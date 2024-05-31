@@ -4,7 +4,7 @@ import dedalus.public as d3
 import logging
 logger = logging.getLogger(__name__)
 
-def A_max_growth_rate(Reynolds, omega0, Rm, Co, b0_scalar, q, ky, kz, Nx, NEV=10, target=5):
+def B_max_growth_rate(Reynolds, omega0, Rm, Co, b0_scalar, q, ky, kz, Nx, NEV=10, target=5):
     """Compute maximum linear growth rate."""
 
     # Parameters
@@ -30,13 +30,12 @@ def A_max_growth_rate(Reynolds, omega0, Rm, Co, b0_scalar, q, ky, kz, Nx, NEV=10
     bases = (zbasis, ybasis, xbasis)
     sigma = dist.Field(name='sigma')
     p = dist.Field(name='p', bases=bases)
-    phi = dist.Field(name='phi', bases=bases)
-    a = dist.VectorField(coords, name='a', bases=bases)
+    b = dist.VectorField(coords, name='b', bases=bases)
     u = dist.VectorField(coords, name='u', bases=bases)
     tau_p = dist.Field(name='tau_p')
-    tau_phi = dist.Field(name='tau_phi')
-    tau_a1 = dist.VectorField(coords, name='tau_a1', bases=(zbasis, ybasis))
-    tau_a2 = dist.VectorField(coords, name='tau_a2', bases=(zbasis, ybasis))
+
+    tau_b1 = dist.VectorField(coords, name='tau_a1', bases=(zbasis, ybasis))
+    tau_b2 = dist.VectorField(coords, name='tau_a2', bases=(zbasis, ybasis))
     tau_u1 = dist.VectorField(coords, name='tau_u1', bases=(zbasis, ybasis))
     tau_u2 = dist.VectorField(coords, name='tau_u2', bases=(zbasis, ybasis))
     
@@ -53,32 +52,25 @@ def A_max_growth_rate(Reynolds, omega0, Rm, Co, b0_scalar, q, ky, kz, Nx, NEV=10
     lift_basis = xbasis.derivative_basis(1)
     lift = lambda A: d3.Lift(A, lift_basis, -1)
     grad_u = d3.grad(u) + ex*lift(tau_u1) # First-order reduction
-    grad_a = d3.grad(a) + ex*lift(tau_a1) # First-order reduction
+    grad_b = d3.grad(b) + ex*lift(tau_b1) # First-order reduction
     dt = lambda A: sigma*A
 
-    b = d3.curl(a)
     omega['g'][0] = 1
     u0['g'][1] = -q*omega0*x
     b0['g'][0] = b0_scalar
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
     # First-order form: "lap(f)" becomes "div(grad_f)"
-    problem = d3.EVP([p, u, a, phi, tau_p, tau_u1, tau_u2, tau_a1, tau_a2, tau_phi], namespace=locals(), eigenvalue=sigma)
-    problem.add_equation("dt(a) + lift(tau_a2) + grad(phi) - div(grad_a)/Rm - ((grad(a)@u0-u0@grad(a)) + cross(u,b0))= 0")
-    problem.add_equation("dt(u) + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) + lap(Co*(cross(a, b0)))  \
+    problem = d3.EVP([p, u, b, tau_p, tau_u1, tau_u2, tau_b1, tau_b2], namespace=locals(), eigenvalue=sigma)
+    problem.add_equation("dt(b) + lift(tau_b2) - div(grad_b)/Rm - cross(u0,b) + cross(u,b0)= 0")
+    problem.add_equation("dt(u) + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) \
                          - div(grad_u)/Reynolds - 2*cross(omega, u) + lift(tau_u2) = 0" )
-    problem.add_equation("trace(grad_a) + tau_phi = 0")
     problem.add_equation("trace(grad_u) + tau_p = 0")
     problem.add_equation("integ(p) = 0") # Pressure gauge
-    problem.add_equation("integ(phi) = 0")
     problem.add_equation("u(x=-Lx) = 0")
     problem.add_equation("u(x=Lx) = 0")
-    problem.add_equation("ey@a(x=-Lx) = 0")
-    problem.add_equation("ey@a(x=Lx) = 0")
-    problem.add_equation("ez@a(x=-Lx) = 0")
-    problem.add_equation("ez@a(x=Lx) = 0")
-    problem.add_equation("phi(x=-Lx) = 0")
-    problem.add_equation("phi(x=Lx) = 0")
+    problem.add_equation("ex@b(x=-Lx) = 0")
+    problem.add_equation("ex@b(x=Lx) = 0")
     # Solver
     solver = problem.build_solver(entry_cutoff=0)
     growth = []
@@ -86,6 +78,7 @@ def A_max_growth_rate(Reynolds, omega0, Rm, Co, b0_scalar, q, ky, kz, Nx, NEV=10
         solver.solve_sparse(p, NEV, target=target)
         growth.append(np.max(solver.eigenvalues.real))
     return np.max(growth)
+    
 if __name__ == "__main__":
 
     import time
