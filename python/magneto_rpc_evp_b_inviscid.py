@@ -4,7 +4,7 @@ import dedalus.public as d3
 import logging
 logger = logging.getLogger(__name__)
 
-def B_inviscid_max_growth_rate(Reynolds, omega0, Rm, Co, b0_scalar, q, ky, kz, Nx, NEV=10, target=5):
+def B_inviscid_max_growth_rate(omega0,Co, b0_scalar, q, ky, kz, Nx, NEV=10, target=5):
     """Compute maximum linear growth rate."""
 
     # Parameters
@@ -34,8 +34,10 @@ def B_inviscid_max_growth_rate(Reynolds, omega0, Rm, Co, b0_scalar, q, ky, kz, N
     u = dist.VectorField(coords, name='u', bases=bases)
     tau_p = dist.Field(name='tau_p')
 
-    tau_b1 = dist.VectorField(coords, name='tau_a1', bases=(zbasis, ybasis))
-    tau_u1 = dist.VectorField(coords, name='tau_u1', bases=(zbasis, ybasis))
+    tau_b1 = dist.Field(name='tau_b1', bases=(zbasis, ybasis))
+    tau_u1 = dist.Field(name='tau_u1', bases=(zbasis, ybasis))
+    tau_b2 = dist.Field(name='tau_b2', bases=(zbasis, ybasis))
+    tau_u2 = dist.Field(name='tau_u2', bases=(zbasis, ybasis))
     
     # inverse Rossby number
     omega = dist.VectorField(coords, name = 'omega',bases=(xbasis,))
@@ -49,8 +51,6 @@ def B_inviscid_max_growth_rate(Reynolds, omega0, Rm, Co, b0_scalar, q, ky, kz, N
     ez, ey, ex = coords.unit_vector_fields(dist)
     lift_basis = xbasis.derivative_basis(1)
     lift = lambda A: d3.Lift(A, lift_basis, -1)
-    grad_u = d3.grad(u) + ex*lift(tau_u1) # First-order reduction
-    grad_b = d3.grad(b) + ex*lift(tau_b1) # First-order reduction
     dt = lambda A: sigma*A
 
     omega['g'][0] = 1
@@ -60,30 +60,24 @@ def B_inviscid_max_growth_rate(Reynolds, omega0, Rm, Co, b0_scalar, q, ky, kz, N
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
     # First-order form: "lap(f)" becomes "div(grad_f)"
-    problem = d3.EVP([p, u, b, tau_p, tau_u1, tau_b1], namespace=locals(), eigenvalue=sigma)
-    problem.add_equation("dt(b) + lift(tau_b1) - curl(cross(u0,b)) - curl(cross(u,b0))= 0")
-    problem.add_equation("dt(u) + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) - curl(Co*cross(b,b0))\
-                          - 2*cross(omega, u) + lift(tau_u1) = 0" )
+    problem = d3.EVP([p, u, b, tau_p, tau_u1, tau_b1,tau_u2, tau_b2], namespace=locals(), eigenvalue=sigma)
+    problem.add_equation("dt(b) + ey*lift(tau_b1)+ ez*lift(tau_b2) - curl(cross(u0,b)) - curl(cross(u,b0))= 0")
+    problem.add_equation("dt(u) + ey*lift(tau_u1)+ ez*lift(tau_u2) + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) - curl(Co*cross(b,b0))\
+                          - 2*cross(omega, u) = 0" )
     problem.add_equation("trace(grad(u)) + tau_p = 0")
     problem.add_equation("integ(p) = 0") # Pressure gauge
     problem.add_equation("ex@u(x=-Lx) = 0")
     problem.add_equation("ex@u(x=Lx) = 0")
-    problem.add_equation("ey@curl(u)(x=Lx) = 0")
-    problem.add_equation("ey@curl(u)(x=-Lx) = 0")
-    problem.add_equation("ez@curl(u)(x=Lx) = 0")
-    problem.add_equation("ez@curl(u)(x=-Lx) = 0")
     problem.add_equation("ex@b(x=-Lx) = 0")
     problem.add_equation("ex@b(x=Lx) = 0")
-    problem.add_equation("ex@grad(ey@b)(x=Lx) = 0")
-    problem.add_equation("ex@grad(ey@b)(x=-Lx) = 0")
-    # problem.add_equation("ex@grad(ez@b)(x=Lx) = 0")
-    # problem.add_equation("ex@grad(ez@b)(x=-Lx) = 0")
+
     # Solver
     solver = problem.build_solver(entry_cutoff=0)
     growth = []
     for p in solver.subproblems[3:4]:
-        solver.solve_sparse(p, NEV, target=target)
+        solver.solve_dense(p)
         growth.append(np.max(solver.eigenvalues.real))
+    print(np.max(growth))
     return np.max(growth)
 
 if __name__ == "__main__":
@@ -95,13 +89,10 @@ if __name__ == "__main__":
     # Parameters
     Nx = 128
     Co = 0.08
-    Rm = 4.9
-    Pm = 0.001
-    Reynolds = Rm/Pm 
     omega0 = 1
     b0 = 1
     q = 3/2
-    kz_global = np.linspace(0.1, 2,16)
+    kz_global = np.linspace(0.1, 3,16)
     ky = 1e-5
     NEV = 100
 
@@ -109,7 +100,7 @@ if __name__ == "__main__":
     kz_local = kz_global[comm.rank::comm.size]
 
     t1 = time.time()
-    growth_local = np.array([B_inviscid_max_growth_rate(Reynolds, omega0, Rm, Co, b0, q, ky, kz, Nx, NEV=NEV) for kz in kz_local])
+    growth_local = np.array([B_inviscid_max_growth_rate(omega0, Co, b0, q, ky, kz, Nx, NEV=NEV) for kz in kz_local])
     t2 = time.time()
     logger.info('Elapsed solve time: %f' %(t2-t1))
 
@@ -127,7 +118,7 @@ if __name__ == "__main__":
         plt.plot(kz_local, growth_local, '-',label = "max = " +str(round(max(growth_local),2))+" at "+str(kz_local[np.where(growth_local==np.max(growth_local))]) )
         plt.xlabel(r'$k_z$')
         plt.ylabel(r'$\mathrm{Re}(\sigma)$')
-        plt.title(f'MRI growth rates Rm={Rm}, Pm={Pm}, Co={Co}')
+        plt.title(f'MRI growth rates Co={Co}')
         plt.tight_layout()
         # plt.xlim(0, 1.75)
         # plt.ylim(-0.09, 0.04)
