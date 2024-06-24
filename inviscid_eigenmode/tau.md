@@ -8,3 +8,5 @@ Each name of the dir corresponds to a specific combination of tau terms and here
 7: ez\*tau_b1 ey\*tau_b2 ez\*tau_u
 8: ez\*tau_b1 ey\*tau_b2 ey\*tau_u
 9: ez\*tau_b1 ey\*tau_b2 ex\*tau_u
+
+In the tau.csv file, the tau terms are listed in the order of tau_u, tau_b1, tau_b2
