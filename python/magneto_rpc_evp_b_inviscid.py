@@ -74,17 +74,20 @@ def build_evp(params, save_dir, **kw):
         tau_u2 = dist.Field(name='tau_u2', bases=boundary_bases)
 
     # inverse Rossby number
-    omega = dist.VectorField(coords, name = 'omega')#,bases=(xbasis,))
+    omega = dist.VectorField(coords, name = 'omega',bases=(xbasis,))
 
     # background velocity field
     u0 = dist.VectorField(coords, name='u0', bases=(xbasis,))
-    #b0 = dist.VectorField(coords, name='b0',bases=(xbasis,))
-    b0 = dist.VectorField(coords, name='b0')
+    b0 = dist.VectorField(coords, name='b0',bases=(xbasis,))
+    #b0 = dist.VectorField(coords, name='b0')
 
     # Substitutions
     ey, ez, ex = coords.unit_vector_fields(dist)
     lift_basis = xbasis.derivative_basis(2)
     lift = lambda A,i: d3.Lift(A, lift_basis, i)
+    lift_basis1 = xbasis.derivative_basis(1)
+    lift1 = lambda A,i: d3.Lift(A, lift_basis1, i)
+
     dt = lambda A: sigma*A
 
     omega['g'][1] = omega0
@@ -96,22 +99,27 @@ def build_evp(params, save_dir, **kw):
     # First-order form: "lap(f)" becomes "div(grad_f)"
     tau_u = lift(tau_u1,-1) + lift(tau_u2, -2)
     tau_b = lift(tau_b1,-1) + lift(tau_b2, -2)
-    tau_div = lift(tau_c1, -1) + tau_c2
-    problem = d3.EVP([p, u, b, tau_c1, tau_c2, tau_u1, tau_b1, tau_u2, tau_b2], namespace=locals(), eigenvalue=sigma)
+    tau_div = lift1(tau_c1, -1) + tau_c2
     if diffusion:
-        problem.add_equation("dt(b) - lap(b)/Rm + tau_b - curl(cross(u0,b)) - curl(cross(u,b0))= 0")
-        problem.add_equation("dt(u) - lap(u)/Re + tau_u + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) - curl(Co*cross(b,b0)) + 2*cross(omega, u) = 0" )
+        problem = d3.EVP([p, u, b, tau_c1, tau_c2, tau_u1, tau_b1, tau_u2, tau_b2], namespace=locals(), eigenvalue=sigma)
+    else:
+        problem = d3.EVP([p, u, b, tau_c1, tau_c2, tau_u1, tau_b1], namespace=locals(), eigenvalue=sigma)
+    if diffusion:
+        #problem.add_equation("dt(b) - lap(b)/Rm + tau_b - curl(cross(u0,b)) - curl(cross(u,b0))= 0")
+        problem.add_equation("dt(b) - lap(b)/Rm + tau_b + u0@grad(b) - b0@grad(u) - b@grad(u0)= 0")
+        #problem.add_equation("dt(u) - lap(u)/Re + tau_u + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) - curl(Co*cross(b,b0)) + 2*cross(omega, u) = 0" )
+        problem.add_equation("dt(u) - lap(u)/Re + tau_u + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) - Co*b0@grad(b) + 2*cross(omega, u) = 0" )
         problem.add_equation("div(u) + tau_div = 0")
         problem.add_equation("integ(ex@tau_u2) = 0")
         problem.add_equation("integ(p) = 0") # Pressure gauge
-        problem.add_equation("u(x=-Lx/2) = 0")
-        problem.add_equation("u(x=Lx/2) = 0")
-        # problem.add_equation("ex@u(x=-Lx/2) = 0")
-        # problem.add_equation("ex@u(x=Lx/2) = 0")
-        # problem.add_equation("ex@(grad(ey@u)(x=-Lx/2)) = 0")
-        # problem.add_equation("ex@(grad(ey@u)(x=Lx/2)) = 0")
-        # problem.add_equation("ex@(grad(ez@u)(x=-Lx/2)) = 0")
-        # problem.add_equation("ex@(grad(ez@u)(x=Lx/2)) = 0")
+        # problem.add_equation("u(x=-Lx/2) = 0")
+        # problem.add_equation("u(x=Lx/2) = 0")
+        problem.add_equation("ex@u(x=-Lx/2) = 0")
+        problem.add_equation("ex@u(x=Lx/2) = 0")
+        problem.add_equation("ex@(grad(ey@u)(x=-Lx/2)) = 0")
+        problem.add_equation("ex@(grad(ey@u)(x=Lx/2)) = 0")
+        problem.add_equation("ex@(grad(ez@u)(x=-Lx/2)) = 0")
+        problem.add_equation("ex@(grad(ez@u)(x=Lx/2)) = 0")
 
         problem.add_equation("ex@b(x=-Lx/2) = 0")
         problem.add_equation("ex@b(x=Lx/2) = 0")
@@ -120,9 +128,9 @@ def build_evp(params, save_dir, **kw):
         problem.add_equation("ez@j(x=-Lx/2) = 0")
         problem.add_equation("ez@j(x=Lx/2) = 0")
     else:
-        problem.add_equation("dt(b) + ex*lift(tau_b1)+ ex*lift(tau_b2) - curl(cross(u0,b)) - curl(cross(u,b0))= 0")
-        problem.add_equation("dt(u) + ex*lift(tau_u1)+ ex*lift(tau_u2) + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) - curl(Co*cross(b,b0)) + 2*cross(omega, u) = 0" )
-        problem.add_equation("trace(grad(u)) + tau_p = 0")
+        problem.add_equation("dt(b) + ex*lift1(tau_b1,-1)+ ex*lift1(tau_b2,-2) - curl(cross(u0,b)) - curl(cross(u,b0))= 0")
+        problem.add_equation("dt(u) + ex*lift1(tau_u1,-1)+ ex*lift1(tau_u2,-2) + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) - curl(Co*cross(b,b0)) + 2*cross(omega, u) = 0" )
+        problem.add_equation("div(u) + lift1(tau_c1,-1) + tau_c2 = 0")
         problem.add_equation("integ(p) = 0") # Pressure gauge
         problem.add_equation("ex@u(x=-Lx/2) = 0")
         problem.add_equation("ex@u(x=Lx/2) = 0")
@@ -131,7 +139,7 @@ def build_evp(params, save_dir, **kw):
 
     return problem
 
-def dense_evp(params, save_dir="data", reload=False, subproblem=(1,0,None), **kw):
+def dense_evp(params, save_dir="data", reload=False, subproblem=(0,1,None), **kw):
     """Solve EVP for all eigenmodes."""
 
     factor = 4/3
@@ -175,8 +183,12 @@ def dense_evp(params, save_dir="data", reload=False, subproblem=(1,0,None), **kw
     else:
         t0 = time.time()
         #solver.solve_dense(sp)
-        EVP.solve(subproblem=subproblem)
+        #EVP.solve(subproblem=subproblem)
         sp =  EVP.solver.subproblems_by_group[subproblem]
+        EVP.solver.solve_dense(sp)
+        EVP.evalues = EVP.solver.eigenvalues
+        EVP.evalues_primary = EVP.solver.eigenvalues
+        EVP.evalues_secondary = EVP.solver.eigenvalues
         t1 = time.time()
         logger.info(f"EVP solve time: {t1-t0:.2f}")
         logger.info(f"Matrix size: {sp.L_min.shape}")
@@ -194,27 +206,27 @@ def dense_evp(params, save_dir="data", reload=False, subproblem=(1,0,None), **kw
 
 if __name__ == "__main__":
     # Parameters
-    # R = 1.001
-    # Ro = 3/4
-    # q = 2*Ro
-    # S = -R*np.sqrt(Ro)
-    # Co = (S/q/np.pi)**2
+    R = 1.001
+    Ro = 3/4
+    q = 2*Ro
+    S = -R*np.sqrt(Ro)
+    Co = (S/q/np.pi)**2
 
     # tau = S/q
     # L_us = 1
-    # d_them = np.pi
-    # ky_them = 0.263
-    # kz_them = 0.447
-    # Re_them = 10000
-    # Re_us = 0#Re_them
-    # ky_us = ky_them * d_them/L_us
-    # kz_us = kz_them * d_them/L_us
+    d_them = np.pi
+    ky_them = 0.263
+    kz_them = 0.447
+    Re_them = 10000
+    Re_us = 10000#Re_them * d_them
+    ky_us = ky_them #/ d_them
+    kz_us = kz_them #/ d_them
 
-    Co = 0.04
-    kz_us = 2
-    ky_us = 1e-5
-    Re_us = 100
-    subproblem = (0,1,None)
+    # Co = 0.04
+    # kz_us = 2
+    # ky_us = 1e-5
+    # Re_us = 100
+    subproblem = (1,1,None)
     params = evp_params(
         Re = Re_us,
         Rm = Re_us,
@@ -227,6 +239,7 @@ if __name__ == "__main__":
     EVP = dense_evp(params,subproblem=subproblem)
     growth = (np.max(EVP.evalues.real))
     print(f"max growth rate = {growth}")
+    EVP.solver.print_subproblem_ranks()
 # np.savez(
 #     f"{save_dir}/{name}_etools",
 #     eigenvalues=solver.eigenvalues,
