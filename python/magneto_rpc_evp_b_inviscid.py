@@ -58,7 +58,8 @@ def build_evp(params, save_dir, **kw):
     p = dist.Field(name='p', bases=bases)
     b = dist.VectorField(coords, name='b', bases=bases)
     u = dist.VectorField(coords, name='u', bases=bases)
-    tau_p = dist.Field(name='tau_p')
+    tau_c1 = dist.Field(name='tau_c1')
+    tau_c2 = dist.Field(name='tau_c2')
 
     boundary_bases = (ybasis, zbasis)
     if diffusion:
@@ -82,12 +83,9 @@ def build_evp(params, save_dir, **kw):
 
     # Substitutions
     ey, ez, ex = coords.unit_vector_fields(dist)
-    lift_basis = xbasis.derivative_basis(1)
-    lift = lambda A: d3.Lift(A, lift_basis, -1)
+    lift_basis = xbasis.derivative_basis(2)
+    lift = lambda A,i: d3.Lift(A, lift_basis, i)
     dt = lambda A: sigma*A
-    if diffusion:
-        grad_u = d3.grad(u) + ex*lift(tau_u1) # First-order reduction
-        grad_b = d3.grad(b) + ex*lift(tau_b1) # First-order reduction
 
     omega['g'][1] = omega0
     u0['g'][0] = -q*omega0*x
@@ -96,20 +94,24 @@ def build_evp(params, save_dir, **kw):
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
     # First-order form: "lap(f)" becomes "div(grad_f)"
-    problem = d3.EVP([p, u, b, tau_p, tau_u1, tau_b1,tau_u2, tau_b2], namespace=locals(), eigenvalue=sigma)
+    tau_u = lift(tau_u1,-1) + lift(tau_u2, -2)
+    tau_b = lift(tau_b1,-1) + lift(tau_b2, -2)
+    tau_div = lift(tau_c1, -1) + tau_c2
+    problem = d3.EVP([p, u, b, tau_c1, tau_c2, tau_u1, tau_b1, tau_u2, tau_b2], namespace=locals(), eigenvalue=sigma)
     if diffusion:
-        problem.add_equation("dt(b) - div(grad_b)/Rm + lift(tau_b2) - curl(cross(u0,b)) - curl(cross(u,b0))= 0")
-        problem.add_equation("dt(u) - div(grad_u)/Re + lift(tau_u2) + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) - curl(Co*cross(b,b0)) + 2*cross(omega, u) = 0" )
-        problem.add_equation("trace(grad(u)) + tau_p = 0")
+        problem.add_equation("dt(b) - lap(b)/Rm + tau_b - curl(cross(u0,b)) - curl(cross(u,b0))= 0")
+        problem.add_equation("dt(u) - lap(u)/Re + tau_u + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) - curl(Co*cross(b,b0)) + 2*cross(omega, u) = 0" )
+        problem.add_equation("div(u) + tau_div = 0")
+        problem.add_equation("integ(ex@tau_u2) = 0")
         problem.add_equation("integ(p) = 0") # Pressure gauge
-        #problem.add_equation("u(x=-Lx/2) = 0")
-        #problem.add_equation("u(x=Lx/2) = 0")
-        problem.add_equation("ex@u(x=-Lx/2) = 0")
-        problem.add_equation("ex@u(x=Lx/2) = 0")
-        problem.add_equation("ex@(grad(ey@u)(x=-Lx/2)) = 0")
-        problem.add_equation("ex@(grad(ey@u)(x=Lx/2)) = 0")
-        problem.add_equation("ex@(grad(ez@u)(x=-Lx/2)) = 0")
-        problem.add_equation("ex@(grad(ez@u)(x=Lx/2)) = 0")
+        problem.add_equation("u(x=-Lx/2) = 0")
+        problem.add_equation("u(x=Lx/2) = 0")
+        # problem.add_equation("ex@u(x=-Lx/2) = 0")
+        # problem.add_equation("ex@u(x=Lx/2) = 0")
+        # problem.add_equation("ex@(grad(ey@u)(x=-Lx/2)) = 0")
+        # problem.add_equation("ex@(grad(ey@u)(x=Lx/2)) = 0")
+        # problem.add_equation("ex@(grad(ez@u)(x=-Lx/2)) = 0")
+        # problem.add_equation("ex@(grad(ez@u)(x=Lx/2)) = 0")
 
         problem.add_equation("ex@b(x=-Lx/2) = 0")
         problem.add_equation("ex@b(x=Lx/2) = 0")
