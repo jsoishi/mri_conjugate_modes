@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 from eigentools import Eigenproblem
 
 import time
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 comm = MPI.COMM_WORLD
 
 def evp_name(params):
@@ -185,7 +185,7 @@ def dense_evp(params, save_dir="data", reload=False, subproblem=(0,1,None), **kw
         #solver.solve_dense(sp)
         #EVP.solve(subproblem=subproblem)
         sp =  EVP.solver.subproblems_by_group[subproblem]
-        EVP.solve(subproblem=subproblem)
+        EVP.solve(subproblem=subproblem, left=True)
         t1 = time.time()
         logger.info(f"EVP solve time: {t1-t0:.2f}")
         logger.info(f"Matrix size: {sp.L_min.shape}")
@@ -195,7 +195,8 @@ def dense_evp(params, save_dir="data", reload=False, subproblem=(0,1,None), **kw
         eigenvalues=EVP.evalues,
         all_eigenvalues=EVP.evalues_primary,
         all_eigenvalues_hires=EVP.evalues_secondary,
-        all_eigenvectors=EVP.solver.eigenvectors,
+        all_eigenvectors=EVP.solver.right_eigenvectors,
+        all_modified_left_eigenvectors=EVP.solver.modified_left_eigenvectors,
         **params._asdict())
 
 
