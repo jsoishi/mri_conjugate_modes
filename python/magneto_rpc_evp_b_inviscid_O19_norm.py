@@ -168,7 +168,8 @@ def dense_evp(params, save_dir="data", reload=False, subproblem=(0,1,None), **kw
             EVP.evalues_primary = data['all_eigenvalues']
             EVP.evalues_secondary = data['all_eigenvalues_hires']
             EVP.solver.eigenvalues = EVP.evalues_primary
-            EVP.solver.eigenvectors = data['all_eigenvectors']
+            EVP.solver.right_eigenvectors = data['all_eigenvectors']
+            EVP.solver.modified_left_eigenvectors = data['all_modified_left_eigenvectors']
         sp =  EVP.solver.subproblems_by_group[subproblem]
         EVP.solver.eigenvalue_subproblem = sp
         EVP.reject_spurious()
