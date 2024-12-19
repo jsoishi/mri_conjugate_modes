@@ -43,36 +43,37 @@ def build_evp(params, save_dir, **kw):
     Lz = 2 * np.pi / params.kz
 
     # Bases
-    coords = d3.CartesianCoordinates('z', 'y', 'x')
+    coords = d3.CartesianCoordinates('y', 'z', 'x')
     # dist = d3.Distributor(coords, dtype=np.complex128, comm=MPI.COMM_SELF)
     dist = d3.Distributor(coords, dtype=np.complex128)
     xbasis = d3.ChebyshevT(coords['x'], size=Nx, bounds=(-Lx/2, Lx/2))
     ybasis = d3.ComplexFourier(coords['y'], size=Ny, bounds=(0, Ly))
     zbasis = d3.ComplexFourier(coords['z'], size=Nz, bounds=(0, Lz))
 
-    z, y, x = dist.local_grids(zbasis, ybasis, xbasis)
+    y, z, x = dist.local_grids(ybasis, zbasis, xbasis)
 
     # Fields
-    bases = (zbasis, ybasis, xbasis)
+    bases = (ybasis, zbasis, xbasis)
     sigma = dist.Field(name='sigma')
     p = dist.Field(name='p', bases=bases)
     b = dist.VectorField(coords, name='b', bases=bases)
     u = dist.VectorField(coords, name='u', bases=bases)
     tau_p = dist.Field(name='tau_p')
 
+    boundary_bases = (ybasis, zbasis)
     if diffusion:
-        tau_b1 = dist.VectorField(coords, name='tau_b1', bases=(zbasis, ybasis))
-        tau_u1 = dist.VectorField(coords, name='tau_u1', bases=(zbasis, ybasis))
-        tau_b2 = dist.VectorField(coords, name='tau_b2', bases=(zbasis, ybasis))
-        tau_u2 = dist.VectorField(coords, name='tau_u2', bases=(zbasis, ybasis))
+        tau_b1 = dist.VectorField(coords, name='tau_b1', bases=boundary_bases)
+        tau_u1 = dist.VectorField(coords, name='tau_u1', bases=boundary_bases)
+        tau_b2 = dist.VectorField(coords, name='tau_b2', bases=boundary_bases)
+        tau_u2 = dist.VectorField(coords, name='tau_u2', bases=boundary_bases)
     else:
-        tau_b1 = dist.Field(name='tau_b1', bases=(zbasis, ybasis))
-        tau_u1 = dist.Field(name='tau_u1', bases=(zbasis, ybasis))
-        tau_b2 = dist.Field(name='tau_b2', bases=(zbasis, ybasis))
-        tau_u2 = dist.Field(name='tau_u2', bases=(zbasis, ybasis))
+        tau_b1 = dist.Field(name='tau_b1', bases=boundary_bases)
+        tau_u1 = dist.Field(name='tau_u1', bases=boundary_bases)
+        tau_b2 = dist.Field(name='tau_b2', bases=boundary_bases)
+        tau_u2 = dist.Field(name='tau_u2', bases=boundary_bases)
 
     # inverse Rossby number
-    omega = dist.VectorField(coords, name = 'omega',bases=(xbasis,))
+    omega = dist.VectorField(coords, name = 'omega')#,bases=(xbasis,))
 
     # background velocity field
     u0 = dist.VectorField(coords, name='u0', bases=(xbasis,))
@@ -80,7 +81,7 @@ def build_evp(params, save_dir, **kw):
     b0 = dist.VectorField(coords, name='b0')
 
     # Substitutions
-    ez, ey, ex = coords.unit_vector_fields(dist)
+    ey, ez, ex = coords.unit_vector_fields(dist)
     lift_basis = xbasis.derivative_basis(1)
     lift = lambda A: d3.Lift(A, lift_basis, -1)
     dt = lambda A: sigma*A
@@ -88,9 +89,9 @@ def build_evp(params, save_dir, **kw):
         grad_u = d3.grad(u) + ex*lift(tau_u1) # First-order reduction
         grad_b = d3.grad(b) + ex*lift(tau_b1) # First-order reduction
 
-    omega['g'][0] = omega0
-    u0['g'][1] = -q*omega0*x
-    b0['g'][0] = b0_scalar
+    omega['g'][1] = omega0
+    u0['g'][0] = -q*omega0*x
+    b0['g'][1] = b0_scalar
     j = d3.curl(b)
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
@@ -101,14 +102,14 @@ def build_evp(params, save_dir, **kw):
         problem.add_equation("dt(u) - div(grad_u)/Re + lift(tau_u2) + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) - curl(Co*cross(b,b0)) + 2*cross(omega, u) = 0" )
         problem.add_equation("trace(grad(u)) + tau_p = 0")
         problem.add_equation("integ(p) = 0") # Pressure gauge
-        problem.add_equation("u(x=-Lx/2) = 0")
-        problem.add_equation("u(x=Lx/2) = 0")
-        # problem.add_equation("ex@u(x=-Lx/2) = 0")
-        # problem.add_equation("ex@u(x=Lx/2) = 0")
-        # problem.add_equation("ex@(grad(ey@u)(x=-Lx/2)) = 0")
-        # problem.add_equation("ex@(grad(ey@u)(x=Lx/2)) = 0")
-        # problem.add_equation("ex@(grad(ez@u)(x=-Lx/2)) = 0")
-        # problem.add_equation("ex@(grad(ez@u)(x=Lx/2)) = 0")
+        #problem.add_equation("u(x=-Lx/2) = 0")
+        #problem.add_equation("u(x=Lx/2) = 0")
+        problem.add_equation("ex@u(x=-Lx/2) = 0")
+        problem.add_equation("ex@u(x=Lx/2) = 0")
+        problem.add_equation("ex@(grad(ey@u)(x=-Lx/2)) = 0")
+        problem.add_equation("ex@(grad(ey@u)(x=Lx/2)) = 0")
+        problem.add_equation("ex@(grad(ez@u)(x=-Lx/2)) = 0")
+        problem.add_equation("ex@(grad(ez@u)(x=Lx/2)) = 0")
 
         problem.add_equation("ex@b(x=-Lx/2) = 0")
         problem.add_equation("ex@b(x=Lx/2) = 0")
@@ -118,7 +119,7 @@ def build_evp(params, save_dir, **kw):
         problem.add_equation("ez@j(x=Lx/2) = 0")
     else:
         problem.add_equation("dt(b) + ex*lift(tau_b1)+ ex*lift(tau_b2) - curl(cross(u0,b)) - curl(cross(u,b0))= 0")
-        problem.add_equation("dt(u) + ex*lift(tau_u1)+ ex*lift(tau_u2) + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) - curl(Co*cross(b,b0)) - 2*cross(omega, u) = 0" )
+        problem.add_equation("dt(u) + ex*lift(tau_u1)+ ex*lift(tau_u2) + dot(u0,grad(u)) + dot(u,grad(u0)) + grad(p) - curl(Co*cross(b,b0)) + 2*cross(omega, u) = 0" )
         problem.add_equation("trace(grad(u)) + tau_p = 0")
         problem.add_equation("integ(p) = 0") # Pressure gauge
         problem.add_equation("ex@u(x=-Lx/2) = 0")
@@ -210,8 +211,8 @@ if __name__ == "__main__":
     Co = 0.04
     kz_us = 2
     ky_us = 1e-5
-    Re_us = 0
-    subproblem = (1,0,None)
+    Re_us = 100
+    subproblem = (0,1,None)
     params = evp_params(
         Re = Re_us,
         Rm = Re_us,
