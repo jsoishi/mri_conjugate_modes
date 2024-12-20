@@ -24,14 +24,14 @@ max_timestep = 0.0675
 # Parameters
 params = ivp_params(
     Nx = 128,
-    Ny = 16,
-    Nz = 16,
+    Ny = 64,
+    Nz = 64,
     q = 0.75,
     R = 1.001,
     ky = 0.263,
     kz = 0.447,
-    Re = 100000,
-    Rm = 100000,
+    Re = 100,
+    Rm = 100,
     no_slip = False
 )
 name = ivp_name(params)
@@ -60,7 +60,7 @@ f_param =  R*B/np.sqrt(q)
 
 # Bases
 coords = d3.CartesianCoordinates('y', 'z', 'x')
-dist = d3.Distributor(coords, dtype=np.float64)
+dist = d3.Distributor(coords, dtype=np.float64, mesh=(8,16))
 xbasis = d3.ChebyshevT(coords['x'], size=Nx, bounds=(-Lx/2, Lx/2),dealias=dealias)
 ybasis = d3.RealFourier(coords['y'], size=Ny, bounds=(0, Ly), dealias=dealias)
 zbasis = d3.RealFourier(coords['z'], size=Nz, bounds=(0, Lz), dealias=dealias)
@@ -138,8 +138,7 @@ problem.add_equation("ez@j(x=-Lx/2) = 0")
 problem.add_equation("ez@j(x=Lx/2) = 0")
 
 solver = problem.build_solver(d3.RK222)
-#solver.stop_iteration = 100
-solver.stop_sim_time = 10
+solver.stop_sim_time = 150
 
 vol = Lx*Ly*Lz
 integ = lambda A: d3.Integrate(d3.Integrate(d3.Integrate(A, 'y'), 'z'), 'x')
@@ -151,7 +150,7 @@ ME = 0.5*b@b
 dir_path = f"data/{name}"
 
 snapshots_path = dir_path+"/snapshots"
-snapshots = solver.evaluator.add_file_handler(snapshots_path, sim_dt=0.25, max_writes=1)
+snapshots = solver.evaluator.add_file_handler(snapshots_path, sim_dt=1, max_writes=1)
 snapshots.add_tasks(solver.state)
 scalars_path = dir_path+"/scalars"
 scalars = solver.evaluator.add_file_handler(scalars_path, iter=10, max_writes=None)
@@ -163,12 +162,10 @@ scalars.add_task(np.sqrt(volavg(d3.div(b)**2)), name='|div_b|')
 #scalars.add_task(np.sqrt(volavg(tau_d**2)), name='|tau_d|')
 scalars.add_task(np.sqrt(volavg(tau_u@tau_u)), name='|tau_u|')
 scalars.add_task(np.sqrt(volavg(tau_b@tau_b)), name='|tau_b|')
+scalars.add_task(np.sqrt(volavg(d3.grad(phi)@d3.grad(phi))), name='|grad_phi|')
 
 CFL = d3.CFL(solver, initial_dt=max_timestep, cadence=10, safety=0.5, threshold=0.05,
              max_change=1.5, min_change=0.5, max_dt=max_timestep)
-CFL = d3.CFL(solver, initial_dt=max_timestep, cadence=10, safety=0.5, threshold=0.05,
-             max_change=1.5, min_change=0.5, max_dt=max_timestep)
-
 CFL.add_velocity(u)
 CFL.add_velocity(b)
 
@@ -176,22 +173,20 @@ CFL.add_velocity(b)
 ic_potential = dist.VectorField(coords, name='Phi', bases=bases)
 ic_potential.fill_random('g', seed=42, distribution='normal', scale=1e-2) # Random noise
 ic_potential['g'] *= x * (Lx/2 - x) # Damp noise at walls
-# Taylor Roll like IC
+
 A = 1e-5
 u_ic = d3.Curl(ic_potential).evaluate()
 u_ic.change_scales(1)
 u['g'] = A*u_ic['g']
 
 # Main loop
-startup_iter = 10
-timestep = CFL.compute_timestep()
 try:
     logger.info('Starting main loop')
     while solver.proceed:
+        timestep = CFL.compute_timestep()
         solver.step(timestep)
         if (solver.iteration-1) % 10 == 0:
             # max_Re = flow.max('Re')
-            timestep = CFL.compute_timestep()
             logger.info('Iteration=%i, Time=%e, dt=%e' %(solver.iteration, solver.sim_time, timestep))
 except:
     logger.error('Exception raised, triggering end of main loop.')
